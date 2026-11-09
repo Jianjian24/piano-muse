@@ -1,38 +1,49 @@
-# 钢琴教练 — 蓝牙 MIDI 音符验证
+# 钢琴教练 (Piano Coach)
 
-技术验证版：通过标准 BLE MIDI 接收电子琴音符，并在屏幕上实时显示。
+Agent 版钢琴陪练：蓝牙 MIDI 接收演奏，DeepSeek 对话教练 + 轻量音阶跟练。
+
+## 功能
+
+- **练习**：连接 TERENCE 等电子琴（支持虫虫钢琴建立系统 MIDI 后接入）
+- **教练**：根据最近 60 秒弹奏摘要对话；支持「分析刚才这一段」、停手 2s 提示
+- **跟练**：瀑布卷帘（左右手分色 + 规则指法 1–5 可开关）；导入 `.mid` 保存并自动 AI 分层练习；谱面试听用 SoundFont 钢琴采样（可调 BPM）；跟练需齐键并按住足够时值（不判定指法对错）
+- **设置**：DeepSeek API Key、Base URL、模型、水平自报（仅存本机 DataStore）
 
 ## 开发环境
 
-本机已通过 winget 安装 **Eclipse Temurin JDK 17**；Android SDK 仍需 Android Studio。
+1. 安装 Android Studio，打开 `e:\code\music`
+2. Gradle 同步（已配置阿里云镜像，见历史说明）
+3. 真机 USB 调试运行（MIDI 需真机）
 
-1. 安装 [Android Studio](https://developer.android.com/studio)（或 `winget install Google.AndroidStudio`），自带 Android SDK。
-2. 用 Android Studio 打开本目录 `e:\code\music`，等待 Gradle 同步完成。
-3. 手机开启**开发者选项**与 **USB 调试**，用数据线连接电脑。
+## DeepSeek 配置
 
-**Gradle Sync 网络问题**：
+1. 在 [DeepSeek 开放平台](https://platform.deepseek.com/) 申请 API Key
+2. App → **教练** Tab → 右上角 **设置** → 填写 Key，默认 `https://api.deepseek.com` + `deepseek-chat`
+3. 点击 **测试连接** 验证网络
 
-- `dl.google.com` 超时：工程已用阿里云 Maven 镜像，点 **Sync Project with Gradle Files** 重试。
-- `github.com` / `gradle-8.9-src.zip` 超时：这是 IDE 在下载 **Gradle 源码**（Kotlin 构建脚本提示用）。工程已关闭 `downloadSources`；若仍卡住，在 **Settings → Build, Execution, Deployment → Gradle** 取消 **Download Gradle sources**，再 Sync。需要代理时可只对 GitHub 开 VPN 一次。
-- Gradle 发行包已改走腾讯云镜像（`gradle-wrapper.properties`）。
+**安全**：不要把 `secrets.properties` 或含 Key 的文件提交 Git；公开分发 APK 前请改用自有后端代理 Key。
 
-命令行编译（需已设置 `ANDROID_HOME`）：
+## 特伦斯 + 虫虫钢琴
+
+1. 虫虫连接 `TERENCE PIANO`
+2. 打开本 App → **练习** → **刷新** → 选「系统 MIDI 在线」
+3. 断开后若列表空：虫虫重连琴 → 回本 App 刷新
+
+## 构建
 
 ```bash
 .\gradlew.bat assembleDebug
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
-## 真机验证清单
+## 架构（简）
 
-1. 允许蓝牙权限，打开蓝牙，扫描并连接电子琴。
-2. 慢弹单音：音名、键位高亮与松手一致。
-3. 和弦：多键同时亮，单独松键正确熄灭。
-4. 轻/重弹：力度数字变化。
-5. 停手数秒：事件列表无 Active Sensing 刷屏。
+| 包 | 作用 |
+|----|------|
+| `midi` | BLE / 系统 MIDI 连接 |
+| `session` | 音符环形缓冲、停手检测 |
+| `coach` | 演奏摘要 JSON、DeepSeek、Agent 提示词 |
+| `drill` | 音阶跟练状态机 |
+| `settings` | DataStore 配置 |
 
-琴端请开启 **Bluetooth MIDI**；若扫描为空，先在系统蓝牙里配对后再扫描。
-
-### 不依赖虫虫钢琴直连（特伦斯）
-
-官方说明要求：手机**断开与钢琴的蓝牙音频/媒体连接**（只保留配对），**重启电钢琴**后再连 MIDI。本 App 会按标准 `openBluetoothDevice` + BLE GATT 预唤醒连接。若仍失败，多为音频与 MIDI 抢占或型号限制，可临时用虫虫建立系统 MIDI 或改用 **USB OTG 有线 MIDI**。
+播放数据以 **摘要 JSON** 上传模型，非原始全量 MIDI 日志。

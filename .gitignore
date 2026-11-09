@@ -22,3 +22,4 @@ captures/
 *.ap_
 *.dex
 *.hprof
+secrets.properties

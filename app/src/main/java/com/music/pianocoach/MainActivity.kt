@@ -12,8 +12,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.Modifier
+import com.music.pianocoach.ui.MainScaffold
 import com.music.pianocoach.ui.MainViewModel
-import com.music.pianocoach.ui.PianoScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = lightColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    PianoScreen(viewModel = viewModel)
+                    MainScaffold(viewModel = viewModel)
                 }
             }
         }
