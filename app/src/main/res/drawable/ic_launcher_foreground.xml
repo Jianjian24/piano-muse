@@ -5,6 +5,31 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#D4A574"
-        android:pathData="M28,72h8V36h12v36h8V28h12v44h8V52h12v20h8V40h-72z" />
+        android:fillColor="#F2EFE9"
+        android:pathData="M0,0 H108 V108 H0 Z" />
+    <!-- 辅助弧：短、居中（不拉满画布，避免被裁成圆环） -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M38,46 C50,40 62,40 74,46"
+        android:strokeWidth="1.4"
+        android:strokeColor="#7AA896"
+        android:strokeLineCap="round" />
+    <!-- 主曲线 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M40,64 C44,50 54,42 64,41 C72,40 76,48 72,54"
+        android:strokeWidth="2.2"
+        android:strokeColor="#D4A574"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+  <!-- 符头 + 符杆（上一版尺度） -->
+    <path
+        android:fillColor="#C99562"
+        android:pathData="M70,52 m-4.5,0 a4.5,4.5 0 1,1 9,0 a4.5,4.5 0 1,1 -9,0" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M74.5,52 L74.5,40"
+        android:strokeWidth="1.8"
+        android:strokeColor="#D4A574"
+        android:strokeLineCap="round" />
 </vector>
