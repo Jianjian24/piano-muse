@@ -55,6 +55,24 @@ fun SongPiece.pitchRange(): IntRange {
 fun SongPiece.totalTicks(): Int =
     timedNotes.maxOfOrNull { it.startTick + it.durationTicks } ?: 0
 
+/** 播放头落在时值内、仍应视为「按住」的音符。 */
+fun SongPiece.timedNotesSoundingAt(tick: Int): List<TimedNote> =
+    timedNotes.filter { n ->
+        tick >= n.startTick && tick < n.startTick + n.durationTicks
+    }
+
+fun SongPiece.midisSoundingAt(tick: Int): Set<Int> =
+    timedNotesSoundingAt(tick).map { it.midi }.toSet()
+
+/** 某键在 tick 上正在鸣响的那条事件（连复音取最近起音）。 */
+fun SongPiece.primaryTimedNoteAt(tick: Int, midi: Int): TimedNote? =
+    timedNotesSoundingAt(tick)
+        .filter { it.midi == midi }
+        .maxByOrNull { it.startTick }
+        ?: timedNotes
+            .filter { it.midi == midi }
+            .minByOrNull { kotlin.math.abs(it.startTick - tick) }
+
 /** 跟练「一步」合并容差：约 1/24 拍，随 PPQ 缩放（MusicXML divisions=4 时不能用固定 20）。 */
 fun SongPiece.chordStepSnapTicks(): Int =
     (ticksPerQuarter / 24).coerceIn(1, 48)

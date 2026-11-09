@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.pianocoach.drill.PianoHand
 import com.music.pianocoach.drill.SongPiece
+import com.music.pianocoach.drill.midisSoundingAt
+import com.music.pianocoach.drill.primaryTimedNoteAt
 import com.music.pianocoach.midi.midiNoteToLabel
 import com.music.pianocoach.ui.theme.MuseColors
 
@@ -136,6 +138,7 @@ fun PianoRollView(
                     textAlign = Paint.Align.CENTER
                     typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 }
+                val soundingMidis = piece.midisSoundingAt(playheadTick)
 
                 // —— 瀑布区 ——
                 drawRect(WaterfallBg, size = Size(w, fallH))
@@ -162,12 +165,11 @@ fun PianoRollView(
 
                     val cx = xCenter(note.midi)
                     val nw = noteWidth(note.midi)
-                    val isCurrent = note.midi in currentChord &&
-                        kotlin.math.abs(note.startTick - playheadTick) <= ppq / 2
+                    val isSounding = playheadTick in note.startTick until endTick
                     val base = if (note.hand == PianoHand.LEFT) LeftHand else RightHand
                     val color = when {
-                        note.midi in pressed && isCurrent -> KeyPressed
-                        isCurrent -> base
+                        note.midi in pressed && isSounding -> KeyPressed
+                        isSounding -> base
                         note.startTick < playheadTick -> base.copy(alpha = 0.3f)
                         else -> if (note.hand == PianoHand.LEFT) LeftHandDim else RightHandDim
                     }
@@ -209,10 +211,9 @@ fun PianoRollView(
 
                 whiteKeys.forEachIndexed { idx, midi ->
                     val x = idx * whiteW
-                    val target = midi in currentChord
+                    val target = midi in currentChord || midi in soundingMidis
                     val active = midi in pressed
-                    val curNote = piece.timedNotes
-                        .firstOrNull { it.midi == midi && kotlin.math.abs(it.startTick - playheadTick) < ppq }
+                    val curNote = piece.primaryTimedNoteAt(playheadTick, midi)
                     val hand = curNote?.hand
                         ?: if (midi < 60) PianoHand.LEFT else PianoHand.RIGHT
                     val fill = when {
@@ -249,10 +250,9 @@ fun PianoRollView(
                     val x = (wi + 1) * whiteW - whiteW * 0.32f
                     val bw = whiteW * 0.58f
                     val bh = kbH * 0.58f
-                    val target = midi in currentChord
+                    val target = midi in currentChord || midi in soundingMidis
                     val active = midi in pressed
-                    val curNote = piece.timedNotes
-                        .firstOrNull { it.midi == midi && kotlin.math.abs(it.startTick - playheadTick) < ppq }
+                    val curNote = piece.primaryTimedNoteAt(playheadTick, midi)
                     val hand = curNote?.hand ?: PianoHand.LEFT
                     val fill = when {
                         active -> KeyPressed
