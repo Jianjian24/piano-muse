@@ -56,6 +56,8 @@ class SongLibraryStore(context: Context) {
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
         File(root, "$id.json").delete()
         File(root, "$id.mid").delete()
+        File(root, "$id.mxl").delete()
+        File(root, "$id.musicxml").delete()
         File(File(root, "plans"), "$id.json").delete()
         val index = readIndex()
         writeIndex(
@@ -66,9 +68,10 @@ class SongLibraryStore(context: Context) {
         )
     }
 
-    /** 顺带保存原始 MIDI，便于以后重新解析 */
-    suspend fun saveMidiBytes(id: String, bytes: ByteArray) = withContext(Dispatchers.IO) {
-        File(root, "$id.mid").writeBytes(bytes)
+    /** 保存原始导入文件（.mid / .mxl / .musicxml），便于以后重新解析 */
+    suspend fun saveImportBytes(id: String, bytes: ByteArray, ext: String) = withContext(Dispatchers.IO) {
+        val safe = ext.lowercase().removePrefix(".")
+        File(root, "$id.$safe").writeBytes(bytes)
     }
 
     private fun readIndex(): LibraryIndex {

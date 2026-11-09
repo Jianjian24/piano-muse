@@ -78,7 +78,7 @@ fun DrillTab(
     val showLibrary = state.showSongLibrary
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
-    val pickMidi = rememberLauncherForActivityResult(
+    val pickScore = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
@@ -150,7 +150,19 @@ fun DrillTab(
                 state = state,
                 viewModel = viewModel,
                 onBg = onBg,
-                onPickMidi = { pickMidi.launch(arrayOf("audio/midi", "audio/mid", "*/*")) },
+                onPickMidi = {
+                    pickScore.launch(
+                        arrayOf(
+                            "audio/midi",
+                            "audio/mid",
+                            "application/vnd.recordare.musicxml+xml",
+                            "application/zip",
+                            "text/xml",
+                            "application/xml",
+                            "*/*",
+                        ),
+                    )
+                },
                 onCloseLibrary = { viewModel.setShowSongLibrary(false) },
                 modifier = Modifier.weight(1f, fill = true),
             )
@@ -160,7 +172,7 @@ fun DrillTab(
         val piece = drill.piece
         if (piece == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("请打开曲库选择或导入 MIDI", color = onBg)
+                Text("请打开曲库选择或导入曲谱", color = onBg)
             }
             return
         }
@@ -304,7 +316,7 @@ private fun SongLibraryPanel(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedButton(onClick = onPickMidi, modifier = Modifier.fillMaxWidth()) {
-            Text("导入 MIDI (.mid)")
+            Text("导入曲谱 (.mid / .mxl)")
         }
         state.importMessage?.let {
             Text(it, color = onBg, style = MaterialTheme.typography.bodySmall)

@@ -55,10 +55,15 @@ fun SongPiece.pitchRange(): IntRange {
 fun SongPiece.totalTicks(): Int =
     timedNotes.maxOfOrNull { it.startTick + it.durationTicks } ?: 0
 
+/** 跟练「一步」合并容差：约 1/24 拍，随 PPQ 缩放（MusicXML divisions=4 时不能用固定 20）。 */
+fun SongPiece.chordStepSnapTicks(): Int =
+    (ticksPerQuarter / 24).coerceIn(1, 48)
+
 /**
  * 将同时起奏（startTick 相同或相差 ≤ snap）的音合并为和弦步进。
  */
-fun SongPiece.toChordSteps(snapTicks: Int = 20): List<ChordStep> {
+fun SongPiece.toChordSteps(snapTicks: Int = -1): List<ChordStep> {
+    val snap = if (snapTicks < 0) chordStepSnapTicks() else snapTicks
     if (timedNotes.isEmpty()) {
         var tick = 0
         return notes.map { sn ->
@@ -78,7 +83,7 @@ fun SongPiece.toChordSteps(snapTicks: Int = 20): List<ChordStep> {
         if (bucket.isEmpty()) {
             bucketStart = n.startTick
             bucket.add(n)
-        } else if (n.startTick - bucketStart <= snapTicks) {
+        } else if (n.startTick - bucketStart <= snap) {
             bucket.add(n)
         } else {
             steps.add(ChordStep(bucketStart, bucket.sortedBy { it.midi }))

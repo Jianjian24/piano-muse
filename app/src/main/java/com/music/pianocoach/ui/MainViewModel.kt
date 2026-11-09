@@ -12,7 +12,7 @@ import com.music.pianocoach.coach.UiChatMessage
 import com.music.pianocoach.drill.ActiveDrillRef
 import com.music.pianocoach.drill.BuiltinSongs
 import com.music.pianocoach.drill.DrillResult
-import com.music.pianocoach.drill.MidiSongImporter
+import com.music.pianocoach.drill.ScoreFileImporter
 import com.music.pianocoach.drill.PracticeDrill
 import com.music.pianocoach.drill.PracticePlan
 import com.music.pianocoach.drill.PracticePlanStore
@@ -648,16 +648,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 val cr = getApplication<Application>().contentResolver
-                val name = uri.lastPathSegment?.substringAfterLast('/') ?: "导入曲谱"
+                val name = cr.resolveDisplayName(uri) ?: uri.lastPathSegment ?: "导入曲谱"
                 val bytes = cr.openInputStream(uri)?.use { it.readBytes() }
-                    ?: return@withContext Result.failure<Pair<SongPiece, ByteArray>>(
+                    ?: return@withContext Result.failure(
                         IllegalStateException("无法打开文件"),
                     )
-                MidiSongImporter.import(bytes.inputStream(), name).map { it to bytes }
+                ScoreFileImporter.import(bytes, name)
             }
-            result.onSuccess { (piece, bytes) ->
+            result.onSuccess { imported ->
+                val piece = imported.piece
                 songLibrary.saveImported(piece)
-                songLibrary.saveMidiBytes(piece.id, bytes)
+                songLibrary.saveImportBytes(piece.id, imported.rawBytes, imported.sourceExt)
                 val steps = piece.toChordSteps().size
                 val catalog = (_uiState.value.songCatalog + piece).distinctBy { it.id }
                 _uiState.update {
@@ -673,6 +674,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    private fun android.content.ContentResolver.resolveDisplayName(uri: Uri): String? = runCatching {
+        query(uri, null, null, null, null)?.use { c ->
+            if (!c.moveToFirst()) return null
+            val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (idx < 0) return null
+            c.getString(idx)
+        }
+    }.getOrNull()
 
     override fun onCleared() {
         streamJob?.cancel()
