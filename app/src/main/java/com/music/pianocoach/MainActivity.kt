@@ -8,12 +8,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.Modifier
 import com.music.pianocoach.ui.MainScaffold
 import com.music.pianocoach.ui.MainViewModel
+import com.music.pianocoach.ui.theme.MuseColors
+import com.music.pianocoach.ui.theme.MuseTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -29,8 +29,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         requestBluetoothPermissions()
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme()) {
-                Surface(modifier = Modifier.fillMaxSize()) {
+            MuseTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MuseColors.InkBackground,
+                ) {
                     MainScaffold(viewModel = viewModel)
                 }
             }

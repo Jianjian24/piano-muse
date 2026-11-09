@@ -1,24 +1,32 @@
 package com.music.pianocoach.ui
 
 import android.app.Activity
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Piano
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -32,11 +40,12 @@ import com.music.pianocoach.ui.tabs.CoachTab
 import com.music.pianocoach.ui.tabs.DrillTab
 import com.music.pianocoach.ui.tabs.PracticeTab
 import com.music.pianocoach.ui.tabs.SettingsSheet
+import com.music.pianocoach.ui.theme.MuseColors
 
 enum class MainTab(val route: String, val label: String) {
-    Practice("practice", "练习"),
-    Coach("coach", "教练"),
-    Drill("drill", "跟练"),
+    Practice("practice", "Studio"),
+    Coach("coach", "Muse"),
+    Drill("drill", "Play"),
 }
 
 @Composable
@@ -54,25 +63,51 @@ fun MainScaffold(viewModel: MainViewModel = viewModel()) {
     }
 
     Scaffold(
-        containerColor = if (drillFullscreen) Color(0xFF12151A) else Color.Unspecified,
+        containerColor = MuseColors.InkBackground,
         bottomBar = {
             if (!drillFullscreen) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MuseColors.InkSurface.copy(alpha = 0.92f),
+                    tonalElevation = 0.dp,
+                    windowInsets = NavigationBarDefaults.windowInsets,
+                ) {
                     MainTab.entries.forEach { tab ->
+                        val selected = current == tab.route
+                        val scale by animateFloatAsState(
+                            targetValue = if (selected) 1.08f else 1f,
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                            label = "navScale",
+                        )
+                        val iconTint by animateColorAsState(
+                            targetValue = if (selected) MuseColors.Amber else MuseColors.IvoryDim,
+                            label = "navTint",
+                        )
                         NavigationBarItem(
-                            selected = current == tab.route,
+                            selected = selected,
                             onClick = { navController.navigate(tab.route) { launchSingleTop = true } },
                             icon = {
                                 Icon(
                                     when (tab) {
                                         MainTab.Practice -> Icons.Default.Piano
-                                        MainTab.Coach -> Icons.Default.School
+                                        MainTab.Coach -> Icons.Default.AutoAwesome
                                         MainTab.Drill -> Icons.Default.MusicNote
                                     },
                                     contentDescription = tab.label,
+                                    tint = iconTint,
+                                    modifier = Modifier.graphicsLayer {
+                                        scaleX = scale
+                                        scaleY = scale
+                                    },
                                 )
                             },
-                            label = { Text(tab.label) },
+                            label = { Text(tab.label, style = MaterialTheme.typography.labelLarge) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MuseColors.Amber,
+                                selectedTextColor = MuseColors.Amber,
+                                unselectedIconColor = MuseColors.IvoryDim,
+                                unselectedTextColor = MuseColors.IvoryDim,
+                                indicatorColor = MuseColors.Amber.copy(alpha = 0.18f),
+                            ),
                         )
                     }
                 }
@@ -111,16 +146,21 @@ private fun ImmersiveEffect(enabled: Boolean) {
         val activity = view.context as? Activity
         val window = activity?.window
         val controller = window?.let { WindowInsetsControllerCompat(it, view) }
+        val bar = MuseColors.WaterfallBg.toArgb()
         if (enabled && window != null && controller != null) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
-            window.statusBarColor = Color(0xFF12151A).toArgb()
-            window.navigationBarColor = Color(0xFF12151A).toArgb()
+            window.statusBarColor = bar
+            window.navigationBarColor = bar
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            WindowInsetsControllerCompat(window, view).isAppearanceLightStatusBars = false
         } else if (window != null && controller != null) {
             WindowCompat.setDecorFitsSystemWindows(window, true)
+            window.statusBarColor = MuseColors.InkBackground.toArgb()
+            window.navigationBarColor = MuseColors.InkBackground.toArgb()
             controller.show(WindowInsetsCompat.Type.systemBars())
+            WindowInsetsControllerCompat(window, view).isAppearanceLightStatusBars = false
         }
         onDispose {
             if (window != null && controller != null) {

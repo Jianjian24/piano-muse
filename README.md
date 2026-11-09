@@ -1,4 +1,4 @@
-# 钢琴教练 (Piano Coach)
+# Piano Muse
 
 Agent 版钢琴陪练：蓝牙 MIDI 接收演奏，DeepSeek 对话教练 + 轻量音阶跟练。
 

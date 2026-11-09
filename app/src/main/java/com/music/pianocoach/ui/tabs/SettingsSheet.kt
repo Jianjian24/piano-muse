@@ -32,7 +32,7 @@ fun SettingsSheet(state: PianoUiState, viewModel: MainViewModel, onDismiss: () -
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(24.dp)) {
-            Text("DeepSeek 设置")
+            Text("Piano Muse · API")
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = apiKey,

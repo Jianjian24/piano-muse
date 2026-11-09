@@ -20,8 +20,6 @@ object BuiltinSongs {
     }
 
     val all: List<SongPiece> = listOf(
-        linear("scale_c_up", "C 大调音阶 · 上行", "单音热身 · 8 音", listOf(60, 62, 64, 65, 67, 69, 71, 72)),
-        linear("scale_c_down", "C 大调音阶 · 下行", "单音热身 · 8 音", listOf(72, 71, 69, 67, 65, 64, 62, 60)),
         linear(
             "twinkle",
             "小星星（右手）",

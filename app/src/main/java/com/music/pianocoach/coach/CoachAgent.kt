@@ -13,7 +13,7 @@ class CoachAgent(
 ) {
 
     fun buildSystemPrompt(skillLevel: String): String = """
-        你是「钢琴教练」陪练助手，面向 $skillLevel 学习者。
+        你是 Piano Muse 陪练缪斯，面向 $skillLevel 学习者。
         你会收到用户最近弹奏的结构化 JSON 摘要（音高、节奏、跟练结果），请结合数据给建议。
         要求：
         - 用中文，具体可练习 3～5 分钟，避免长篇乐理。

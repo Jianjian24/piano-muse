@@ -2,6 +2,12 @@ package com.music.pianocoach.ui.tabs
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,8 +30,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -56,6 +61,7 @@ import com.music.pianocoach.drill.totalTicks
 import com.music.pianocoach.ui.MainViewModel
 import com.music.pianocoach.ui.PianoRollView
 import com.music.pianocoach.ui.PianoUiState
+import com.music.pianocoach.ui.theme.MuseColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -81,15 +87,25 @@ fun DrillTab(
         }
     }
 
-    val bg = if (fullscreen) Color(0xFF12151A) else Color.Transparent
-    val onBg = if (fullscreen) Color(0xFFECEFF1) else MaterialTheme.colorScheme.onSurface
+    val bg = if (fullscreen) MuseColors.WaterfallBg else Color.Transparent
+    val onBg = if (fullscreen) MuseColors.Ivory else MaterialTheme.colorScheme.onSurface
+    val playPulse = rememberInfiniteTransition(label = "playPulse")
+    val playGlow by playPulse.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "playGlow",
+    )
     val totalTicks = (drill.piece?.totalTicks() ?: 1).coerceAtLeast(1)
     val progress = (drill.playheadTick.toFloat() / totalTicks).coerceIn(0f, 1f)
     val sliderValue = if (scrubbing) scrubValue else progress
     val titleText = when {
         state.activeDrillRef?.isFullPiece == false ->
             state.activeDrillRef.label.ifBlank { drill.piece?.title ?: "跟练" }
-        else -> drill.piece?.title ?: "跟练"
+        else -> drill.piece?.title ?: "Play"
     }
 
     Column(
@@ -160,7 +176,9 @@ fun DrillTab(
                 Icon(
                     imageVector = if (state.scorePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (state.scorePlaying) "暂停" else "播放",
-                    tint = Color(0xFF4FC3F7),
+                    tint = MuseColors.PlayAccent.copy(
+                        alpha = if (state.scorePlaying) playGlow else 1f,
+                    ),
                 )
             }
             Text(
@@ -182,9 +200,9 @@ fun DrillTab(
                 },
                 modifier = Modifier.weight(1f),
                 colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF4FC3F7),
-                    activeTrackColor = Color(0xFF4FC3F7),
-                    inactiveTrackColor = Color(0xFF3A3F48),
+                    thumbColor = MuseColors.PlayAccent,
+                    activeTrackColor = MuseColors.PlayAccent,
+                    inactiveTrackColor = MuseColors.InkElevated,
                 ),
             )
             if (drill.completed && !state.scorePlaying) {
@@ -195,36 +213,27 @@ fun DrillTab(
             }
         }
 
-        if (!state.scorePlaying && !drill.completed && drill.expectedChord.isNotEmpty()) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val showHold = !state.scorePlaying && !drill.completed && drill.expectedChord.isNotEmpty()
+            if (showHold) {
                 Text(
-                    if (drill.remaining.isEmpty()) "按住" else "齐键后按住",
+                    if (drill.remaining.isEmpty()) "按住" else "齐键",
                     color = onBg.copy(alpha = 0.65f),
                     fontSize = 11.sp,
-                    modifier = Modifier.padding(end = 8.dp),
+                    modifier = Modifier.padding(end = 4.dp),
                 )
                 LinearProgressIndicator(
                     progress = { drill.holdProgress },
-                    modifier = Modifier.weight(1f),
-                    color = Color(0xFF81C784),
-                    trackColor = Color(0xFF3A3F48),
-                )
-                Text(
-                    "${(drill.requiredHoldMs / 1000f).let { String.format("%.1f", it) }}s",
-                    color = onBg.copy(alpha = 0.65f),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier
+                        .weight(0.55f)
+                        .padding(end = 6.dp),
+                    color = MuseColors.SageLight,
+                    trackColor = MuseColors.InkElevated,
                 )
             }
-        }
-
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
             Text("BPM", color = onBg.copy(alpha = 0.7f), fontSize = 11.sp)
             TextButton(
                 onClick = { viewModel.setScoreBpm(state.scoreBpm - 5f) },
@@ -245,11 +254,11 @@ fun DrillTab(
                 value = state.scoreBpm,
                 onValueChange = { viewModel.setScoreBpm(it) },
                 valueRange = 40f..200f,
-                modifier = Modifier.weight(1f).padding(start = 4.dp),
+                modifier = Modifier.weight(1f).padding(start = 2.dp),
                 colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFFFFB74D),
-                    activeTrackColor = Color(0xFFFFB74D),
-                    inactiveTrackColor = Color(0xFF3A3F48),
+                    thumbColor = MuseColors.Amber,
+                    activeTrackColor = MuseColors.Amber,
+                    inactiveTrackColor = MuseColors.InkElevated,
                 ),
             )
             OutlinedButton(
@@ -314,17 +323,16 @@ private fun SongLibraryPanel(
             val imported = piece.id.startsWith("import_")
             val active = state.activeDrillRef?.sourceSongId == piece.id
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (active) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    },
-                ),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        if (active) MuseColors.Amber.copy(alpha = 0.12f) else MuseColors.InkElevated,
+                        RoundedCornerShape(10.dp),
+                    )
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -381,7 +389,6 @@ private fun SongLibraryPanel(
                             },
                         )
                     }
-                }
             }
         }
     }
@@ -455,12 +462,13 @@ private fun AiPlansSection(
 
         plans.forEachIndexed { index, plan ->
             val open = expandedPlanId == plan.id
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MuseColors.InkSurface, RoundedCornerShape(8.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -518,7 +526,6 @@ private fun AiPlansSection(
                             }
                         }
                     }
-                }
             }
         }
     }

@@ -33,18 +33,19 @@ import androidx.compose.ui.unit.sp
 import com.music.pianocoach.drill.PianoHand
 import com.music.pianocoach.drill.SongPiece
 import com.music.pianocoach.midi.midiNoteToLabel
+import com.music.pianocoach.ui.theme.MuseColors
 
-private val WaterfallBg = Color(0xFF1E2228)
+private val WaterfallBg = MuseColors.WaterfallBg
 private val HitLine = Color(0xEEFFFFFF)
-private val LeftHand = Color(0xFF3DDC84)
-private val RightHand = Color(0xFF4FC3F7)
-private val LeftHandDim = Color(0x553DDC84)
-private val RightHandDim = Color(0x554FC3F7)
+private val LeftHand = MuseColors.HandLeft
+private val RightHand = MuseColors.HandRight
+private val LeftHandDim = MuseColors.HandLeftDim
+private val RightHandDim = MuseColors.HandRightDim
 private val KeyWhite = Color(0xFFF3F3F3)
 private val KeyBlack = Color(0xFF111111)
-private val KeyWhiteTargetL = Color(0xFF2E9E5C)
-private val KeyWhiteTargetR = Color(0xFF2A8FB8)
-private val KeyPressed = Color(0xFFFFC107)
+private val KeyWhiteTargetL = Color(0xFF3D6B58)
+private val KeyWhiteTargetR = Color(0xFF3D5F6B)
+private val KeyPressed = MuseColors.Amber
 
 /** 标准 88 键：A0–C8，一页铺满，避免越界 */
 private const val KEY_LOW = 21

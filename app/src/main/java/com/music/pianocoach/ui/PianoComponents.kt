@@ -15,8 +15,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +29,7 @@ import com.music.pianocoach.midi.NoteEvent
 import com.music.pianocoach.midi.PIANO_KEY_MAX
 import com.music.pianocoach.midi.PIANO_KEY_MIN
 import com.music.pianocoach.midi.midiNoteToLabel
+import com.music.pianocoach.ui.theme.MuseColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -42,23 +41,24 @@ private fun isBlackKey(note: Int): Boolean {
 
 @Composable
 fun LastNoteCard(last: NoteEvent?) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        modifier = Modifier.fillMaxWidth(),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MuseColors.InkElevated, RoundedCornerShape(12.dp))
+            .padding(16.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("当前音", style = MaterialTheme.typography.labelMedium)
+        Text("当前音", style = MaterialTheme.typography.labelMedium, color = MuseColors.AmberDim)
+        Text(
+            text = last?.let { midiNoteToLabel(it.note) } ?: "—",
+            fontSize = 40.sp,
+            fontWeight = FontWeight.Normal,
+            color = MuseColors.Ivory,
+        )
+        if (last != null) {
             Text(
-                text = last?.let { midiNoteToLabel(it.note) } ?: "—",
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Bold,
+                text = "${if (last.on) "按下" else "松开"} · 力度 ${last.velocity}",
+                style = MaterialTheme.typography.bodyMedium,
             )
-            if (last != null) {
-                Text(
-                    text = "${if (last.on) "按下" else "松开"} · 力度 ${last.velocity}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
         }
     }
 }
@@ -85,15 +85,21 @@ fun PianoKeyboard(
             scroll.animateScrollTo((idx * 28).coerceAtLeast(0))
         }
     }
-    Box(modifier = modifier.fillMaxWidth().horizontalScroll(scroll)) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MuseColors.InkElevated, RoundedCornerShape(8.dp))
+            .horizontalScroll(scroll)
+            .padding(4.dp),
+    ) {
         Row(modifier = Modifier.width(totalWhiteWidth)) {
             whiteKeys.forEach { note ->
                 val active = note in activeNotes
                 val highlight = note in highlightNotes
                 val color = when {
-                    highlight -> Color(0xFFFFC107)
-                    active -> Color(0xFF4CAF50)
-                    else -> Color(0xFFF5F5F5)
+                    highlight -> MuseColors.Amber
+                    active -> MuseColors.SageLight
+                    else -> Color(0xFFE0DCD4)
                 }
                 Box(
                     modifier = Modifier
@@ -115,9 +121,9 @@ fun PianoKeyboard(
                     .height(keyHeight * 0.62f)
                     .background(
                         when {
-                            highlight -> Color(0xFFFF8F00)
-                            active -> Color(0xFF2E7D32)
-                            else -> Color(0xFF212121)
+                            highlight -> MuseColors.AmberDim
+                            active -> Color(0xFF3D5A4A)
+                            else -> Color(0xFF1A1E22)
                         },
                         RoundedCornerShape(bottomStart = 3.dp, bottomEnd = 3.dp),
                     ),
@@ -128,14 +134,18 @@ fun PianoKeyboard(
 
 @Composable
 fun EventLog(events: List<NoteEvent>, height: androidx.compose.ui.unit.Dp = 160.dp) {
-    Text("事件日志", style = MaterialTheme.typography.titleSmall)
+    Text("事件日志", style = MaterialTheme.typography.titleSmall, color = MuseColors.IvoryDim)
     val listState = rememberLazyListState()
     LaunchedEffect(events.firstOrNull()) {
         if (events.isNotEmpty()) listState.animateScrollToItem(0)
     }
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxWidth().height(height),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(MuseColors.InkElevated, RoundedCornerShape(8.dp))
+            .padding(8.dp),
     ) {
         items(events.take(50), key = { "${it.timeNanos}-${it.note}-${it.on}" }) { event ->
             val time = remember(event.timeNanos) {
