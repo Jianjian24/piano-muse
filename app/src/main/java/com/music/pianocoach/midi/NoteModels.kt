@@ -14,9 +14,9 @@ data class MidiBleDevice(
     val bonded: Boolean,
     /** 广播包中可见标准 BLE MIDI 服务 */
     val advertisesBleMidi: Boolean = false,
-    /** Android MidiManager 已枚举到的设备（虫虫钢琴连上后常出现在此） */
+    /** Android MidiManager 已枚举到的系统 MIDI 设备 */
     val systemMidiDeviceId: String? = null,
-    /** 本次刷新时系统报告该 MIDI 设备在线（虫虫独占时可能为 false 但条目仍保留） */
+    /** 本次刷新时系统报告该 MIDI 设备在线（被其它应用占用时可能为 false 但条目仍保留） */
     val systemMidiOnline: Boolean = false,
 )
 

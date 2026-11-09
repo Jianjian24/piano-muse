@@ -78,7 +78,7 @@ fun SongPiece.sliceForDrill(
             append(" · ").append(title)
         },
         notes = sliced.map { SongNote(it.midi, it.durationTicks.toDouble() / ticksPerQuarter.coerceAtLeast(1)) },
-        timedNotes = FingeringAssigner.assign(sliced),
+        timedNotes = FingeringAssigner.assign(sliced, ticksPerQuarter),
         ticksPerQuarter = ticksPerQuarter,
     )
 }

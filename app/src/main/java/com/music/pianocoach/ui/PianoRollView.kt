@@ -75,7 +75,7 @@ fun PianoRollView(
     pressed: Set<Int>,
     modifier: Modifier = Modifier,
     compactHeader: Boolean = false,
-    showFingering: Boolean = true,
+    showFingering: Boolean = false,
 ) {
     val whiteKeys = (KEY_LOW..KEY_HIGH).filter { !isBlack(it) }
     val ppq = piece.ticksPerQuarter.coerceAtLeast(1)

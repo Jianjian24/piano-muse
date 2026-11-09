@@ -134,7 +134,7 @@ private fun HelpPanel() {
     ) {
         Text("MIDI 连接", style = MaterialTheme.typography.titleSmall, color = MuseColors.Amber)
         Text(
-            "可先用虫虫钢琴连接 TERENCE，回本 App 点「刷新」选「系统 MIDI 在线」。",
+            "蓝牙电子琴请先配对；也可通过 USB OTG 或系统已注册的 MIDI 设备接入。点「刷新」后选「系统 MIDI 在线」。",
             style = MaterialTheme.typography.bodySmall,
         )
     }

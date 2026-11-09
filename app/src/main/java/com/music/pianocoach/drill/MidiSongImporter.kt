@@ -37,7 +37,7 @@ object MidiSongImporter {
         require(timed.isNotEmpty()) { "未找到音符" }
 
         val withHands = HandAssigner.assign(timed)
-        val withFingers = FingeringAssigner.assign(withHands)
+        val withFingers = FingeringAssigner.assign(withHands, ppq)
         val sorted = withFingers.sortedWith(compareBy({ it.startTick }, { it.midi }))
         val chordCount = SongPiece(
             id = "tmp",

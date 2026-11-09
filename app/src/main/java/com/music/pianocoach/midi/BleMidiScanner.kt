@@ -268,7 +268,7 @@ class BleMidiScanner(
         if (name.isNullOrBlank()) return false
         val n = name.uppercase()
         return listOf(
-            "PIANO", "TERENCE", "MIDI", "KEYBOARD", "DIGITAL", "BLE-MIDI", "MELLO",
+            "PIANO", "MIDI", "KEYBOARD", "DIGITAL", "BLE-MIDI", "MELLO",
         ).any { n.contains(it) }
     }
 

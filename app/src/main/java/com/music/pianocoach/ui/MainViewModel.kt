@@ -83,7 +83,7 @@ data class PianoUiState(
     val scorePlaying: Boolean = false,
     val scoreBpm: Float = 100f,
     /** 瀑布上显示指法 1–5（仅提示） */
-    val showFingering: Boolean = true,
+    val showFingering: Boolean = false,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -272,9 +272,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun buildRefreshHint(stats: BleMidiScanner.RefreshStats): String = when {
         stats.systemOnlineCount > 0 -> "系统 MIDI 在线 ${stats.systemOnlineCount} 个（可连接）"
-        stats.bondedCount > 0 -> "已配对 ${stats.bondedCount} 个；虫虫连好后点刷新"
+        stats.bondedCount > 0 -> "已配对 ${stats.bondedCount} 个；请开琴并点刷新"
         !scanner.hasConnectPermission() -> "未授予蓝牙连接权限"
-        else -> "未发现设备：虫虫连接后回本 App"
+        else -> "未发现设备：请确认琴已开机并在本页刷新"
     }
 
     fun startAutoRefreshWhileIdle() {

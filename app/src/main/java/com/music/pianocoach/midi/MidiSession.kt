@@ -39,7 +39,7 @@ class MidiSession(
                 if (opened == null) {
                     onConnection(
                         ConnectionState.Error,
-                        "无法打开系统 MIDI。请先让虫虫钢琴连接琴，再点「刷新设备」后重试。",
+                        "无法打开系统 MIDI。请确认琴已连接并被系统识别，点「刷新设备」后重试。",
                     )
                     return@openDevice
                 }
@@ -96,7 +96,7 @@ class MidiSession(
     private fun buildDirectConnectHint(detail: String?): String {
         val extra = detail?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
         return "无法直接打开蓝牙 MIDI$extra。请：①手机设置里断开与琴的「蓝牙音频/媒体」仅保留配对；" +
-            "②关琴再开；③在本 App 点「刷新设备」后连接。仍失败可用 USB OTG 或暂时用虫虫建立连接。"
+            "②关琴再开；③在本 App 点「刷新设备」后连接。仍失败可尝试 USB OTG 或其它 MIDI 桥接应用建立系统连接后再刷新。"
     }
 
     private fun openPorts(device: MidiDevice) {

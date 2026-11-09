@@ -3,15 +3,15 @@ package com.music.pianocoach.drill
 import kotlin.math.abs
 
 /**
- * 规则指法（MVP）：五指位为主，辅以穿指/移位；左右手分别处理。
+ * 乐句定把位指法：切句 → 每句选把位 → 句内填 1–5（计划内移位，禁止随意穿指）。
  * 仅作提示，不参与跟练判定。
  */
 object FingeringAssigner {
 
-    fun assign(notes: List<TimedNote>): List<TimedNote> {
+    fun assign(notes: List<TimedNote>, ticksPerQuarter: Int = 480): List<TimedNote> {
         if (notes.isEmpty()) return notes
-        val left = assignHand(notes.filter { it.hand == PianoHand.LEFT }, PianoHand.LEFT)
-        val right = assignHand(notes.filter { it.hand == PianoHand.RIGHT }, PianoHand.RIGHT)
+        val left = assignHand(notes.filter { it.hand == PianoHand.LEFT }, PianoHand.LEFT, ticksPerQuarter)
+        val right = assignHand(notes.filter { it.hand == PianoHand.RIGHT }, PianoHand.RIGHT, ticksPerQuarter)
         val byKey = (left + right).associateBy { Triple(it.startTick, it.midi, it.hand) }
         return notes.map { n ->
             byKey[Triple(n.startTick, n.midi, n.hand)]?.let { n.copy(finger = it.finger) }
@@ -19,86 +19,185 @@ object FingeringAssigner {
         }
     }
 
-    private fun assignHand(notes: List<TimedNote>, hand: PianoHand): List<TimedNote> {
+    private fun assignHand(
+        notes: List<TimedNote>,
+        hand: PianoHand,
+        ticksPerQuarter: Int,
+    ): List<TimedNote> {
         if (notes.isEmpty()) return notes
-        val sorted = notes.sortedWith(compareBy({ it.startTick }, { it.midi }))
-        val out = ArrayList<TimedNote>(sorted.size)
-        // 右手：1 在 thumbMidi；左手：5 在 pinkyMidi（低音侧锚点）
-        var anchorWhite = initialAnchorWhite(sorted, hand)
-        var i = 0
-        while (i < sorted.size) {
-            val t0 = sorted[i].startTick
-            val chord = mutableListOf<TimedNote>()
-            while (i < sorted.size && sorted[i].startTick == t0) {
-                chord.add(sorted[i])
-                i++
-            }
-            if (chord.size == 1) {
-                val n = chord[0]
-                val (finger, newAnchor) = nextMelodicFinger(anchorWhite, n.midi, hand)
-                anchorWhite = newAnchor
-                out.add(n.copy(finger = finger))
-            } else {
-                val mapped = assignChord(chord, hand)
-                val anchorNote = mapped.minByOrNull { abs(whiteIndex(it.midi) - anchorWhite) }
-                    ?: mapped.first()
-                anchorWhite = when (hand) {
-                    PianoHand.RIGHT -> whiteIndex(anchorNote.midi) - (anchorNote.finger - 1)
-                    PianoHand.LEFT -> whiteIndex(anchorNote.midi) - (5 - anchorNote.finger)
-                }
-                out.addAll(mapped)
+        val phrases = PhraseSegmenter.segment(notes, ticksPerQuarter)
+        val out = ArrayList<TimedNote>(notes.size)
+        var prevAnchor: Int? = null
+
+        var prevMidi: Int? = null
+        var prevFinger: Int? = null
+        for (phrase in phrases) {
+            val anchor = PositionPicker.pickAnchor(phrase, hand, prevAnchor)
+            val filled = fillPhrase(phrase, anchor, hand, prevMidi, prevFinger)
+            out.addAll(filled)
+            prevAnchor = endingAnchor(phrase, anchor, hand, prevMidi, prevFinger)
+            val last = filled.maxByOrNull { it.startTick }
+            if (last != null) {
+                prevMidi = last.midi
+                prevFinger = last.finger
             }
         }
         return out
     }
 
-    private fun initialAnchorWhite(sorted: List<TimedNote>, hand: PianoHand): Int {
-        val first = sorted.first().midi
-        val high = sorted.maxOf { it.midi }
-        val low = sorted.minOf { it.midi }
-        return when (hand) {
-            PianoHand.RIGHT -> {
-                // 尽量让起音落在 1，且高音仍能用到 5（约 4 个白键跨度）
-                val firstW = whiteIndex(first)
-                val highW = whiteIndex(high)
-                if (highW - firstW <= 4) firstW
-                else (highW - 4).coerceAtMost(firstW)
-            }
-            PianoHand.LEFT -> {
-                val firstW = whiteIndex(first)
-                val lowW = whiteIndex(low)
-                if (firstW - lowW <= 4) firstW - 4 // 5 在低端，1 朝高
-                else lowW
+    internal fun countShiftsForPhrase(phrase: Phrase, startAnchor: Int, hand: PianoHand): Int {
+        var anchor = startAnchor
+        var shifts = 0
+        var prevMidi: Int? = null
+        var prevFinger: Int? = null
+        for (step in phrase.steps) {
+            for (note in step.notes.sortedBy { it.midi }) {
+                val startAnchor = anchor
+                val (finger, newAnchor) = resolveMelodicFinger(
+                    anchor, note.midi, hand, prevMidi, prevFinger,
+                )
+                if (newAnchor != startAnchor) shifts++
+                anchor = newAnchor
+                prevMidi = note.midi
+                prevFinger = finger
             }
         }
+        return shifts
     }
 
-    /** 和弦：右手低音近拇指(1)，左手低音近小指(5)。 */
-    private fun assignChord(chord: List<TimedNote>, hand: PianoHand): List<TimedNote> {
-        val ordered = chord.sortedBy { it.midi }
-        val n = ordered.size
-        return ordered.mapIndexed { idx, note ->
-            val finger = when (hand) {
-                PianoHand.RIGHT -> {
-                    val span = (n - 1).coerceAtLeast(1)
-                    (1 + (idx * 4.0 / span).toInt()).coerceIn(1, 5)
+    private fun fillPhrase(
+        phrase: Phrase,
+        startAnchor: Int,
+        hand: PianoHand,
+        carryMidi: Int? = null,
+        carryFinger: Int? = null,
+    ): List<TimedNote> {
+        val out = ArrayList<TimedNote>()
+        var anchor = startAnchor
+        var prevMidi: Int? = carryMidi
+        var prevFinger: Int? = carryFinger
+        for (step in phrase.steps) {
+            if (step.notes.size == 1) {
+                val n = step.notes.first()
+                val (finger, newAnchor) = resolveMelodicFinger(anchor, n.midi, hand, prevMidi, prevFinger)
+                anchor = newAnchor
+                prevMidi = n.midi
+                prevFinger = finger
+                out.add(n.copy(finger = finger))
+            } else {
+                val chordOut = assignChordWithAnchor(step.notes, anchor, hand)
+                val anchorNote = chordOut.minByOrNull { abs(whiteIndex(it.midi) - anchor) } ?: chordOut.first()
+                anchor = when (hand) {
+                    PianoHand.RIGHT -> whiteIndex(anchorNote.midi) - (anchorNote.finger - 1)
+                    PianoHand.LEFT -> whiteIndex(anchorNote.midi) - (5 - anchorNote.finger)
                 }
-                PianoHand.LEFT -> {
-                    val span = (n - 1).coerceAtLeast(1)
-                    (5 - (idx * 4.0 / span).toInt()).coerceIn(1, 5)
-                }
+                out.addAll(chordOut)
             }
-            note.copy(finger = finger)
         }
+        return out
     }
 
-    /**
-     * @return finger to newAnchorWhite（右手=拇指所在白键序；左手=小指所在白键序）
-     *
-     * 小二度/小三度刚出五指位时优先**移位**（如 G5→A4→G3），
-     * 避免小星星式 G5→A1→G5 的来回穿指；大跳才穿指/重置。
-     */
-    private fun nextMelodicFinger(
+    private fun endingAnchor(
+        phrase: Phrase,
+        startAnchor: Int,
+        hand: PianoHand,
+        carryMidi: Int? = null,
+        carryFinger: Int? = null,
+    ): Int {
+        var anchor = startAnchor
+        var prevMidi: Int? = carryMidi
+        var prevFinger: Int? = carryFinger
+        for (step in phrase.steps) {
+            for (note in step.notes.sortedBy { it.midi }) {
+                val (finger, newAnchor) = resolveMelodicFinger(anchor, note.midi, hand, prevMidi, prevFinger)
+                anchor = newAnchor
+                prevMidi = note.midi
+                prevFinger = finger
+            }
+        }
+        return anchor
+    }
+
+    private fun resolveMelodicFinger(
+        anchorWhite: Int,
+        midi: Int,
+        hand: PianoHand,
+        prevMidi: Int?,
+        prevFinger: Int?,
+    ): Pair<Int, Int> {
+        val (finger, anchor) = geometricFinger(anchorWhite, midi, hand)
+        if (prevMidi == null || prevFinger == null) return finger to anchor
+
+        val prevW = whiteIndex(prevMidi)
+        val w = whiteIndex(midi)
+        val step = w - prevW
+        if (step == 0) {
+            val keepAnchor = when (hand) {
+                PianoHand.RIGHT -> w - prevFinger + 1
+                PianoHand.LEFT -> w - (5 - prevFinger)
+            }
+            return prevFinger to keepAnchor
+        }
+
+        val adjusted = when (hand) {
+            PianoHand.RIGHT -> adjustRightTransition(step, prevFinger, w, finger, anchor)
+            PianoHand.LEFT -> adjustLeftTransition(step, prevFinger, w, finger, anchor)
+        }
+        return adjusted
+    }
+
+    /** 右手：向右弹允 2→1/3→1 穿指，禁止上行时 4→3 等；向左弹允许指号减小。 */
+    private fun adjustRightTransition(
+        step: Int,
+        prevFinger: Int,
+        w: Int,
+        finger: Int,
+        anchor: Int,
+    ): Pair<Int, Int> {
+        if (step > 0 && finger < prevFinger) {
+            if (prevFinger in 2..3 && step == 1) return 1 to w
+            val keepAnchor = w - prevFinger + 1
+            val keepFinger = w - keepAnchor + 1
+            if (keepFinger in 1..5 && keepFinger >= prevFinger) return keepFinger to keepAnchor
+            if (prevFinger >= 4 && step <= 2) {
+                val stretchAnchor = w - 4
+                if (w - stretchAnchor + 1 == 5) return 5 to stretchAnchor
+            }
+        }
+        if (step < 0 && finger > prevFinger) {
+            val target = (prevFinger + step).coerceIn(1, 5)
+            val a = w - target + 1
+            val f = w - a + 1
+            if (f in 1..5 && f <= prevFinger) return f to a
+        }
+        return finger to anchor
+    }
+
+    /** 左手镜像：向高音（右）指号应减小；向低音指号应增大。穿指仅 2→1 / 3→1（指号侧）。 */
+    private fun adjustLeftTransition(
+        step: Int,
+        prevFinger: Int,
+        w: Int,
+        finger: Int,
+        anchor: Int,
+    ): Pair<Int, Int> {
+        if (step > 0 && finger > prevFinger) {
+            if (prevFinger in 2..3 && step == 1) return 1 to (w - 4)
+            val keepAnchor = w - (5 - prevFinger)
+            val keepFinger = 5 - (w - keepAnchor)
+            if (keepFinger in 1..5 && keepFinger <= prevFinger) return keepFinger to keepAnchor
+        }
+        if (step < 0 && finger < prevFinger) {
+            if (prevFinger in 2..3 && step >= -2) return 1 to (w - 4)
+            val target = (prevFinger - step).coerceIn(1, 5)
+            val a = w - (5 - target)
+            val f = 5 - (w - a)
+            if (f in 1..5 && f >= prevFinger) return f to a
+        }
+        return finger to anchor
+    }
+
+    private fun geometricFinger(
         anchorWhite: Int,
         midi: Int,
         hand: PianoHand,
@@ -111,17 +210,16 @@ object FingeringAssigner {
                 when {
                     finger in 1..5 -> Unit
                     finger in 6..7 -> {
-                        // 高出 1–2 白键：手右移，落在 4（便于马上下行）
                         val shift = finger - 4
                         anchor += shift
                         finger = 4
                     }
                     finger > 7 -> {
-                        finger = 1
-                        anchor = w
+                        val shift = finger - 4
+                        anchor += shift
+                        finger = 4
                     }
                     finger in -1..0 -> {
-                        // 低出 1–2 白键：手左移，落在 2
                         val shift = 2 - finger
                         anchor -= shift
                         finger = 2
@@ -139,17 +237,16 @@ object FingeringAssigner {
                 when {
                     finger in 1..5 -> Unit
                     finger in -1..0 -> {
-                        // 上行刚出位：手右移，拇指侧落在 2
                         val shift = 2 - finger
                         anchor += shift
                         finger = 2
                     }
                     finger < -1 -> {
-                        finger = 1
-                        anchor = w - 4
+                        val shift = 2 - finger
+                        anchor += shift
+                        finger = 2
                     }
                     finger in 6..7 -> {
-                        // 下行刚出位：手左移，落在 4
                         val shift = finger - 4
                         anchor -= shift
                         finger = 4
@@ -161,6 +258,22 @@ object FingeringAssigner {
                 }
                 finger to anchor
             }
+        }
+    }
+
+    private fun assignChordWithAnchor(
+        chord: List<TimedNote>,
+        anchorWhite: Int,
+        hand: PianoHand,
+    ): List<TimedNote> {
+        val ordered = chord.sortedBy { it.midi }
+        return ordered.map { note ->
+            val w = whiteIndex(note.midi)
+            val finger = when (hand) {
+                PianoHand.RIGHT -> (w - anchorWhite + 1).coerceIn(1, 5)
+                PianoHand.LEFT -> (5 - (w - anchorWhite)).coerceIn(1, 5)
+            }
+            note.copy(finger = finger)
         }
     }
 
@@ -185,17 +298,17 @@ object FingeringAssigner {
     }
 
     /** 白键序号（黑键并入左侧白键），用于五指位推算。 */
-    internal fun whiteIndex(midi: Int): Int {
+    fun whiteIndex(midi: Int): Int {
         val octave = midi.floorDiv(12)
         val pc = midi.mod(12)
         val inOct = when (pc) {
-            0, 1 -> 0 // C, C#
-            2, 3 -> 1 // D, D#
-            4 -> 2 // E
-            5, 6 -> 3 // F, F#
-            7, 8 -> 4 // G, G#
-            9, 10 -> 5 // A, A#
-            else -> 6 // B
+            0, 1 -> 0
+            2, 3 -> 1
+            4 -> 2
+            5, 6 -> 3
+            7, 8 -> 4
+            9, 10 -> 5
+            else -> 6
         }
         return octave * 7 + inOct
     }
@@ -203,6 +316,5 @@ object FingeringAssigner {
 
 fun SongPiece.withFingerings(): SongPiece {
     if (timedNotes.isEmpty()) return this
-    if (timedNotes.all { it.finger in 1..5 }) return this
-    return copy(timedNotes = FingeringAssigner.assign(timedNotes))
+    return copy(timedNotes = FingeringAssigner.assign(timedNotes, ticksPerQuarter))
 }
