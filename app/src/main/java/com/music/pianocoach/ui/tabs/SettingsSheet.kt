@@ -32,7 +32,12 @@ fun SettingsSheet(state: PianoUiState, viewModel: MainViewModel, onDismiss: () -
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(24.dp)) {
-            Text("Piano Muse · API")
+            Text("Piano Muse · 大模型 API")
+            Text(
+                "兼容 OpenAI 协议（/chat/completions）：可填 OpenAI、DeepSeek 或中转站",
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = apiKey,
@@ -42,9 +47,21 @@ fun SettingsSheet(state: PianoUiState, viewModel: MainViewModel, onDismiss: () -
                 visualTransformation = PasswordVisualTransformation(),
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it }, label = { Text("Base URL") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                label = { Text("Base URL") },
+                placeholder = { Text("https://api.openai.com/v1") },
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(value = model, onValueChange = { model = it }, label = { Text("模型") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it },
+                label = { Text("模型名称") },
+                placeholder = { Text("gpt-4o-mini / deepseek-chat") },
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(value = skill, onValueChange = { skill = it }, label = { Text("你的水平") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(16.dp))

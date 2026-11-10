@@ -9,7 +9,7 @@ data class UiChatMessage(
 )
 
 class CoachAgent(
-    private val client: DeepSeekClient,
+    private val client: ChatCompletionsClient,
 ) {
 
     fun buildSystemPrompt(skillLevel: String): String = """
@@ -32,7 +32,7 @@ class CoachAgent(
         history: List<UiChatMessage> = emptyList(),
     ): Flow<String> {
         if (apiKey.isBlank()) {
-            return flow { emit("请先在「设置」中填写 DeepSeek API Key。") }
+            return flow { emit("请先在「设置」中填写大模型 API Key。") }
         }
         val system = buildSystemPrompt(skillLevel)
         val contextBlock = "【演奏数据 JSON】\n$summaryJson"

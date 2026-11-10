@@ -13,9 +13,15 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 
 class PiecePracticeAnalyzer(
-    private val client: DeepSeekClient,
+    private val client: ChatCompletionsClient,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+
+    companion object {
+        /** Harness 自愈：解析失败时带原输出重试，降低坏 JSON 影响 */
+        const val PLAN_PARSE_MAX_ATTEMPTS = 3
+        private const val MAX_ASSISTANT_CHARS_FOR_REPAIR = 12_000
+    }
 
     suspend fun analyze(
         piece: SongPiece,
@@ -25,29 +31,61 @@ class PiecePracticeAnalyzer(
         skillLevel: String,
     ): Result<PracticePlan> {
         if (apiKey.isBlank()) {
-            return Result.failure(IllegalStateException("请先在设置中填写 DeepSeek API Key"))
+            return Result.failure(IllegalStateException("请先在设置中填写大模型 API Key"))
         }
         if (piece.timedNotes.isEmpty()) {
             return Result.failure(IllegalStateException("曲目没有可分析的音符"))
         }
         val midiText = MidiPieceEncoder.encode(piece)
-        val messages = listOf(
-            ChatMessageDto("system", systemPrompt(skillLevel, piece.totalTicks())),
-            ChatMessageDto("user", "请为下面这首曲子生成分层练习计划。\n\n$midiText"),
-        )
+        val system = systemPrompt(skillLevel, piece.totalTicks())
+        val seedUser = "请为下面这首曲子生成分层练习计划。\n\n$midiText"
         return try {
-            val raw = client.completeChat(baseUrl, apiKey, model, messages)
-            val parsed = parsePlanJson(raw)
-                ?: return Result.failure(IllegalStateException("模型返回无法解析为练习计划"))
-            val plan = toPlan(parsed, piece, model)
-            if (plan.layers.all { it.drills.isEmpty() }) {
-                Result.failure(IllegalStateException("模型未给出可用练习条目"))
-            } else {
-                Result.success(plan)
+            var messages = listOf(
+                ChatMessageDto("system", system),
+                ChatMessageDto("user", seedUser),
+            )
+            var lastReason = "未知错误"
+            repeat(PLAN_PARSE_MAX_ATTEMPTS) { attempt ->
+                val raw = client.completeChat(baseUrl, apiKey, model, messages)
+                val built = tryBuildPlan(raw, piece, model)
+                built.onSuccess { return Result.success(it) }
+                lastReason = built.exceptionOrNull()?.message ?: lastReason
+                if (attempt == PLAN_PARSE_MAX_ATTEMPTS - 1) {
+                    return Result.failure(
+                        IllegalStateException("练习计划生成失败（已重试 $PLAN_PARSE_MAX_ATTEMPTS 次）：$lastReason"),
+                    )
+                }
+                messages = messages + listOf(
+                    ChatMessageDto("assistant", raw.take(MAX_ASSISTANT_CHARS_FOR_REPAIR)),
+                    ChatMessageDto("user", repairUserPrompt(lastReason)),
+                )
             }
+            Result.failure(IllegalStateException("练习计划生成失败：$lastReason"))
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private fun repairUserPrompt(reason: String): String = """
+        你上一次回复无法生成练习计划，原因：$reason
+        请严格按 system 要求，只输出一个 JSON 对象（无 Markdown 代码块、无解释文字）。
+    """.trimIndent()
+
+    private fun tryBuildPlan(raw: String, piece: SongPiece, model: String): Result<PracticePlan> {
+        val dto = parsePlanJson(raw)
+            ?: return Result.failure(IllegalStateException("模型返回无法解析为 JSON"))
+        val plan = toPlan(dto, piece, model)
+        if (plan.layers.all { it.drills.isEmpty() }) {
+            return Result.failure(IllegalStateException("模型未给出可用练习条目"))
+        }
+        val maxTick = piece.totalTicks().coerceAtLeast(1)
+        val invalidRange = plan.layers.any { layer ->
+            layer.drills.any { it.endTick <= it.startTick || it.endTick > maxTick }
+        }
+        if (invalidRange) {
+            return Result.failure(IllegalStateException("drills 的 tick 区间不合法"))
+        }
+        return Result.success(plan)
     }
 
     private fun systemPrompt(skillLevel: String, totalTicks: Int): String = """

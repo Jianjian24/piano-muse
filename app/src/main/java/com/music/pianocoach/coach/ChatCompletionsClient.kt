@@ -31,7 +31,8 @@ private data class ChatRequest(
     val stream: Boolean = false,
 )
 
-class DeepSeekClient(
+/** OpenAI 兼容的 `/chat/completions` 客户端（OpenAI / DeepSeek / 中转站等）。 */
+class ChatCompletionsClient(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
@@ -42,7 +43,6 @@ class DeepSeekClient(
 
     /**
      * 非流式请求更稳；按段落拆成小块 emit，UI 仍有「打字」感。
-     * 避免 SSE 失败时把整段 API JSON 当错误刷成红字。
      */
     fun streamChat(
         baseUrl: String,
@@ -71,11 +71,9 @@ class DeepSeekClient(
                     ?: throw IllegalStateException("模型返回为空，请稍后重试")
             }
         }
-        // 按句/段逐步吐出，便于 UI 显示进度
         chunkForDisplay(text).forEach { emit(it) }
     }.flowOn(Dispatchers.Default)
 
-    /** 非流式完整回复，用于曲目练习计划等结构化输出。 */
     suspend fun completeChat(
         baseUrl: String,
         apiKey: String,
@@ -114,9 +112,10 @@ class DeepSeekClient(
                 .build()
             return@withContext try {
                 http.newCall(request).execute().use { resp ->
-                    val raw = resp.body?.string().orEmpty()
                     if (resp.isSuccessful) Result.success(Unit)
-                    else Result.failure(IllegalStateException(friendlyHttpError(resp.code, raw)))
+                    else Result.failure(
+                        IllegalStateException(friendlyHttpError(resp.code, resp.body?.string().orEmpty())),
+                    )
                 }
             } catch (e: Exception) {
                 Result.failure(IllegalStateException(e.message ?: "网络错误"))
@@ -149,7 +148,7 @@ class DeepSeekClient(
         }
         return when {
             !apiMsg.isNullOrBlank() -> "请求失败 ($code)：$apiMsg"
-            code == 401 -> "API Key 无效，请在设置中检查"
+            code == 401 -> "API Key 无效，请在设置中检查 Base URL 与密钥"
             code == 402 -> "账户余额不足"
             code == 429 -> "请求过于频繁，请稍后再试"
             else -> "请求失败 (HTTP $code)"

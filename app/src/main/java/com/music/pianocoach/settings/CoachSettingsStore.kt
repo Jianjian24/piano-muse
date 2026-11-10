@@ -11,10 +11,16 @@ import kotlinx.coroutines.flow.map
 
 private val Context.coachDataStore: DataStore<Preferences> by preferencesDataStore(name = "coach_settings")
 
+/** 出厂默认：DeepSeek；用户可在设置中改为 OpenAI / 中转等 OpenAI 兼容端点 */
+object LlmApiDefaults {
+    const val BASE_URL = "https://api.deepseek.com"
+    const val MODEL = "deepseek-chat"
+}
+
 data class CoachSettings(
     val apiKey: String = "",
-    val baseUrl: String = "https://api.deepseek.com",
-    val model: String = "deepseek-chat",
+    val baseUrl: String = LlmApiDefaults.BASE_URL,
+    val model: String = LlmApiDefaults.MODEL,
     val skillLevel: String = "业余初学",
 )
 
@@ -23,8 +29,8 @@ class CoachSettingsStore(private val context: Context) {
     val settings: Flow<CoachSettings> = context.coachDataStore.data.map { prefs ->
         CoachSettings(
             apiKey = prefs[KEY_API] ?: "",
-            baseUrl = prefs[KEY_BASE_URL] ?: DEFAULT_BASE_URL,
-            model = prefs[KEY_MODEL] ?: DEFAULT_MODEL,
+            baseUrl = prefs[KEY_BASE_URL] ?: LlmApiDefaults.BASE_URL,
+            model = prefs[KEY_MODEL] ?: LlmApiDefaults.MODEL,
             skillLevel = prefs[KEY_SKILL] ?: "业余初学",
         )
     }
@@ -44,8 +50,6 @@ class CoachSettingsStore(private val context: Context) {
     }
 
     companion object {
-        const val DEFAULT_BASE_URL = "https://api.deepseek.com"
-        const val DEFAULT_MODEL = "deepseek-chat"
         private val KEY_API = stringPreferencesKey("api_key")
         private val KEY_BASE_URL = stringPreferencesKey("base_url")
         private val KEY_MODEL = stringPreferencesKey("model")

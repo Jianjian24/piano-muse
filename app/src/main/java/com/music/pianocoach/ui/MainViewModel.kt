@@ -5,7 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.pianocoach.coach.CoachAgent
-import com.music.pianocoach.coach.DeepSeekClient
+import com.music.pianocoach.coach.ChatCompletionsClient
 import com.music.pianocoach.coach.PiecePracticeAnalyzer
 import com.music.pianocoach.coach.PracticeContextBuilder
 import com.music.pianocoach.coach.UiChatMessage
@@ -102,9 +102,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsStore = CoachSettingsStore(application)
     private val songLibrary = SongLibraryStore(application)
     private val practicePlanStore = PracticePlanStore(application)
-    private val deepSeek = DeepSeekClient()
-    private val coachAgent = CoachAgent(deepSeek)
-    private val pieceAnalyzer = PiecePracticeAnalyzer(deepSeek)
+    private val llmClient = ChatCompletionsClient()
+    private val coachAgent = CoachAgent(llmClient)
+    private val pieceAnalyzer = PiecePracticeAnalyzer(llmClient)
     private val scorePlayback = ScorePlaybackEngine(
         scope = viewModelScope,
         context = application,
@@ -380,7 +380,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             _uiState.update { it.copy(coachError = null, coachInfo = "正在测试…") }
-            val r = deepSeek.ping(s.baseUrl, s.apiKey, s.model)
+            val r = llmClient.ping(s.baseUrl, s.apiKey, s.model)
             _uiState.update {
                 if (r.isSuccess) it.copy(coachInfo = "连接测试成功", coachError = null)
                 else it.copy(coachError = r.exceptionOrNull()?.message, coachInfo = null)
