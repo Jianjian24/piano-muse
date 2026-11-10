@@ -1,7 +1,5 @@
 package com.music.pianocoach.drill
 
-import kotlin.math.abs
-
 /** 同一时刻起奏的一组音（单音或和弦）。 */
 data class MelodicStep(
     val startTick: Int,
@@ -19,9 +17,8 @@ data class Phrase(
 object PhraseSegmenter {
 
     private const val GAP_QUARTERS = 2
-    private const val JUMP_WHITE_KEYS = 5
-    /** 全单音旋律时每句最多步数（小星星等 7 音一句）。 */
-    private const val MONO_PHRASE_STEPS = 7
+    /** 全单音旋律时每句最多步数（避免每几个音就换把位）。 */
+    private const val MONO_PHRASE_STEPS = 16
 
     fun segment(notes: List<TimedNote>, ticksPerQuarter: Int): List<Phrase> {
         if (notes.isEmpty()) return emptyList()
@@ -40,21 +37,13 @@ object PhraseSegmenter {
             }
         }
 
-        fun leadWhite(step: MelodicStep): Int {
-            val midi = when {
-                step.notes.size == 1 -> step.notes.first().midi
-                else -> step.notes.maxOf { it.midi }
-            }
-            return FingeringAssigner.whiteIndex(midi)
-        }
-
         steps.forEachIndexed { index, step ->
             if (bucket.isNotEmpty()) {
                 val prev = bucket.last()
                 val tickGap = step.startTick - prev.startTick
-                val jump = abs(leadWhite(step) - leadWhite(prev))
                 val monoPhraseFull = allMono && bucket.size >= MONO_PHRASE_STEPS
-                if (tickGap >= gapTicks || jump >= JUMP_WHITE_KEYS || monoPhraseFull) {
+                // 大跳仍可能在同一句内换把，不因音程 alone 切断（否则每音成句 → 全标 1）
+                if (tickGap >= gapTicks || monoPhraseFull) {
                     flush()
                 }
             }

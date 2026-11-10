@@ -10,8 +10,12 @@ object FingeringAssigner {
 
     fun assign(notes: List<TimedNote>, ticksPerQuarter: Int = 480): List<TimedNote> {
         if (notes.isEmpty()) return notes
-        val left = assignHand(notes.filter { it.hand == PianoHand.LEFT }, PianoHand.LEFT, ticksPerQuarter)
-        val right = assignHand(notes.filter { it.hand == PianoHand.RIGHT }, PianoHand.RIGHT, ticksPerQuarter)
+        val left = fixSimultaneousFingerConflicts(
+            assignHand(notes.filter { it.hand == PianoHand.LEFT }, PianoHand.LEFT, ticksPerQuarter),
+        )
+        val right = fixSimultaneousFingerConflicts(
+            assignHand(notes.filter { it.hand == PianoHand.RIGHT }, PianoHand.RIGHT, ticksPerQuarter),
+        )
         val byKey = (left + right).associateBy { Triple(it.startTick, it.midi, it.hand) }
         return notes.map { n ->
             byKey[Triple(n.startTick, n.midi, n.hand)]?.let { n.copy(finger = it.finger) }
@@ -32,7 +36,7 @@ object FingeringAssigner {
         var prevMidi: Int? = null
         var prevFinger: Int? = null
         for (phrase in phrases) {
-            val anchor = PositionPicker.pickAnchor(phrase, hand, prevAnchor)
+            val anchor = phraseStartAnchor(phrase, hand, prevAnchor, prevMidi, prevFinger)
             val filled = fillPhrase(phrase, anchor, hand, prevMidi, prevFinger)
             out.addAll(filled)
             prevAnchor = endingAnchor(phrase, anchor, hand, prevMidi, prevFinger)
@@ -265,36 +269,131 @@ object FingeringAssigner {
         chord: List<TimedNote>,
         anchorWhite: Int,
         hand: PianoHand,
+    ): List<TimedNote> = spreadChordFingers(chord, anchorWhite, hand)
+
+    /** 同时按下的音须用不同指，且黑键与白键同桶时不能撞号。 */
+    private fun spreadChordFingers(
+        chord: List<TimedNote>,
+        anchorWhite: Int,
+        hand: PianoHand,
     ): List<TimedNote> {
         val ordered = chord.sortedBy { it.midi }
-        return ordered.map { note ->
-            val w = whiteIndex(note.midi)
-            val finger = when (hand) {
-                PianoHand.RIGHT -> (w - anchorWhite + 1).coerceIn(1, 5)
-                PianoHand.LEFT -> (5 - (w - anchorWhite)).coerceIn(1, 5)
-            }
-            note.copy(finger = finger)
+        if (ordered.isEmpty()) return emptyList()
+        if (ordered.size == 1) {
+            val w = whiteIndex(ordered[0].midi)
+            val f = fingerOnWhite(w, anchorWhite, hand).coerceIn(1, 5)
+            return listOf(ordered[0].copy(finger = f))
         }
+        val ideals = ordered.map { note ->
+            fingerOnWhite(whiteIndex(note.midi), anchorWhite, hand).coerceIn(1, 5)
+        }.toMutableList()
+        when (hand) {
+            PianoHand.RIGHT -> {
+                for (i in 1 until ideals.size) {
+                    if (ideals[i] <= ideals[i - 1]) ideals[i] = (ideals[i - 1] + 1).coerceAtMost(5)
+                }
+                for (i in ideals.lastIndex - 1 downTo 0) {
+                    if (ideals[i] >= ideals[i + 1]) ideals[i] = (ideals[i + 1] - 1).coerceAtLeast(1)
+                }
+            }
+            PianoHand.LEFT -> {
+                for (i in 1 until ideals.size) {
+                    if (ideals[i] >= ideals[i - 1]) ideals[i] = (ideals[i - 1] - 1).coerceAtLeast(1)
+                }
+                for (i in ideals.lastIndex - 1 downTo 0) {
+                    if (ideals[i] <= ideals[i + 1]) ideals[i] = (ideals[i + 1] + 1).coerceAtMost(5)
+                }
+            }
+        }
+        val used = mutableSetOf<Int>()
+        for (i in ideals.indices) {
+            var f = ideals[i]
+            if (f in used) {
+                f = (1..5).first { it !in used }
+            }
+            ideals[i] = f
+            used.add(f)
+        }
+        return ordered.mapIndexed { i, note -> note.copy(finger = ideals[i]) }
     }
 
-    private fun defaultFinger(midi: Int, hand: PianoHand): Int {
-        val pc = midi % 12
-        return when (hand) {
-            PianoHand.RIGHT -> when (pc) {
-                0, 5 -> 1
-                2, 7 -> 2
-                4, 9 -> 3
-                11 -> 4
-                else -> 2
+    private fun fixSimultaneousFingerConflicts(notes: List<TimedNote>): List<TimedNote> {
+        if (notes.size <= 1) return notes
+        val out = notes.toMutableList()
+        out.groupBy { it.startTick }.forEach { (tick, group) ->
+            if (group.size <= 1) return@forEach
+            val hand = group.first().hand
+            val anchor = group.minOf { whiteIndex(it.midi) }
+            val spread = spreadChordFingers(group, anchor, hand)
+            spread.forEach { fixed ->
+                val i = out.indexOfFirst {
+                    it.startTick == fixed.startTick && it.midi == fixed.midi && it.hand == fixed.hand
+                }
+                if (i >= 0) out[i] = fixed
             }
-            PianoHand.LEFT -> when (pc) {
-                0, 5 -> 5
-                2, 7 -> 4
-                4, 9 -> 3
-                11 -> 2
-                else -> 4
+        }
+        var guard = 0
+        var changed = true
+        while (changed && guard++ < 32) {
+            changed = false
+            for (i in out.indices) {
+                val a = out[i]
+                if (a.finger !in 1..5) continue
+                val aEnd = a.startTick + a.durationTicks
+                val busy = fingersUsedWhileHeld(out, a.startTick, aEnd, a.hand, excludeMidi = a.midi)
+                if (a.finger !in busy) continue
+                val replacement = (1..5).firstOrNull { it !in busy } ?: continue
+                if (replacement != a.finger) {
+                    out[i] = a.copy(finger = replacement)
+                    changed = true
+                }
             }
-        }.coerceIn(1, 5)
+        }
+        return out
+    }
+
+    private fun fingersUsedWhileHeld(
+        notes: List<TimedNote>,
+        fromTick: Int,
+        untilTick: Int,
+        hand: PianoHand,
+        excludeMidi: Int,
+    ): Set<Int> =
+        notes.mapNotNull { n ->
+            if (n.hand != hand || n.midi == excludeMidi || n.finger !in 1..5) return@mapNotNull null
+            val nEnd = n.startTick + n.durationTicks
+            if (ticksOverlap(fromTick, untilTick, n.startTick, nEnd)) n.finger else null
+        }.toSet()
+
+    private fun ticksOverlap(s1: Int, e1: Int, s2: Int, e2: Int): Boolean = s1 < e2 && s2 < e1
+
+    /** 未进入算法时勿默认拇指，UI 回退显示音名。 */
+    private fun defaultFinger(midi: Int, hand: PianoHand): Int = 0
+
+    private fun phraseStartAnchor(
+        phrase: Phrase,
+        hand: PianoHand,
+        prevAnchorWhite: Int?,
+        prevMidi: Int?,
+        prevFinger: Int?,
+    ): Int {
+        val picked = PositionPicker.pickAnchor(phrase, hand, prevAnchorWhite)
+        if (prevMidi == null || prevFinger == null) return picked
+        val carry = anchorFromFinger(prevMidi, prevFinger, hand)
+        val whites = phrase.steps.flatMap { s -> s.notes.map { whiteIndex(it.midi) } }
+        if (whites.isEmpty()) return picked
+        val spanOk = whites.all { w -> fingerOnWhite(w, carry, hand) in 1..5 }
+        return if (spanOk) carry else picked
+    }
+
+    private fun anchorFromFinger(midi: Int, finger: Int, hand: PianoHand): Int = when (hand) {
+        PianoHand.RIGHT -> whiteIndex(midi) - finger + 1
+        PianoHand.LEFT -> whiteIndex(midi) - (5 - finger)
+    }
+
+    private fun fingerOnWhite(white: Int, anchor: Int, hand: PianoHand): Int = when (hand) {
+        PianoHand.RIGHT -> white - anchor + 1
+        PianoHand.LEFT -> 5 - (white - anchor)
     }
 
     /** 白键序号（黑键并入左侧白键），用于五指位推算。 */
