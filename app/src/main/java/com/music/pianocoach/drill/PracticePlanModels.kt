@@ -67,6 +67,7 @@ fun SongPiece.sliceForDrill(
         n.copy(
             startTick = clippedStart - start,
             durationTicks = (clippedEnd - clippedStart).coerceAtLeast(1),
+            sourceStartTick = n.pieceStartTick(),
         )
     }.sortedWith(compareBy({ it.startTick }, { it.midi }))
     return SongPiece(
@@ -78,7 +79,8 @@ fun SongPiece.sliceForDrill(
             append(" · ").append(title)
         },
         notes = sliced.map { SongNote(it.midi, it.durationTicks.toDouble() / ticksPerQuarter.coerceAtLeast(1)) },
-        timedNotes = FingeringAssigner.assign(sliced, ticksPerQuarter),
+        // 指法以整曲为准，片段不再重算，避免和整曲不一致。
+        timedNotes = sliced,
         ticksPerQuarter = ticksPerQuarter,
     )
 }

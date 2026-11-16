@@ -2,6 +2,7 @@ package com.music.pianocoach.drill
 
 import kotlinx.serialization.Serializable
 
+@Serializable
 enum class PianoHand { LEFT, RIGHT }
 
 /** 带时值的音符（瀑布/卷帘用）。 */
@@ -14,8 +15,13 @@ data class TimedNote(
     /** 0=未知/单轨；导入时填 MIDI 轨号 */
     val track: Int = 0,
     val hand: PianoHand = if (midi < 60) PianoHand.LEFT else PianoHand.RIGHT,
-    /** 指法 1–5；0=未标注（仅提示，不参与判定） */
+    /** 指法 1–5；0=未标注（仅提示，不参与判定）。用户改过的值保存在整曲上。 */
     val finger: Int = 0,
+    /**
+     * 整曲中的起拍。练习片段会把 [startTick] 改成从 0 起，写回指法时用这个。
+     * -1 表示与 [startTick] 相同。
+     */
+    val sourceStartTick: Int = -1,
 )
 
 /** 兼容旧字段：单音序列跟练仍可用。 */

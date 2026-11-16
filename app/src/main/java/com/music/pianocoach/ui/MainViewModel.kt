@@ -12,6 +12,15 @@ import com.music.pianocoach.coach.UiChatMessage
 import com.music.pianocoach.drill.ActiveDrillRef
 import com.music.pianocoach.drill.BuiltinSongs
 import com.music.pianocoach.drill.DrillResult
+import com.music.pianocoach.drill.FingerEdit
+import com.music.pianocoach.drill.FingerOverrideStore
+import com.music.pianocoach.drill.TimedNote
+import com.music.pianocoach.drill.applyFingerEdits
+import com.music.pianocoach.drill.nextFinger
+import com.music.pianocoach.drill.pieceStartTick
+import com.music.pianocoach.drill.sameFingerSlot
+import com.music.pianocoach.drill.withFingerEdit
+import com.music.pianocoach.drill.withFingerings
 import com.music.pianocoach.drill.ScoreFileImporter
 import com.music.pianocoach.drill.PracticeDrill
 import com.music.pianocoach.drill.PracticePlan
@@ -82,7 +91,7 @@ data class PianoUiState(
     val libraryExpandedPlanId: String? = null,
     val scorePlaying: Boolean = false,
     val scoreBpm: Float = 100f,
-    /** 瀑布上显示指法 1–5（仅提示） */
+    /** 瀑布上显示指法 1–5（仅提示）。打开后可点音符修改，并写回整曲。 */
     val showFingering: Boolean = false,
 )
 
@@ -101,6 +110,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val songDrillEngine = SongDrillEngine()
     private val settingsStore = CoachSettingsStore(application)
     private val songLibrary = SongLibraryStore(application)
+    private val fingerStore = FingerOverrideStore(application)
     private val practicePlanStore = PracticePlanStore(application)
     private val llmClient = ChatCompletionsClient()
     private val coachAgent = CoachAgent(llmClient)
@@ -188,8 +198,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val imported = songLibrary.loadImported()
             val plans = practicePlanStore.loadAll()
+            val fingers = fingerStore.loadAll()
             val lastId = songLibrary.lastSelectedId()
-            val catalog = (BuiltinSongs.all + imported).distinctBy { it.id }
+            val builtins = BuiltinSongs.all.map { it.applyFingerEdits(fingers[it.id].orEmpty()) }
+            val importedWithFingers = imported.map { it.applyFingerEdits(fingers[it.id].orEmpty()) }
+            val catalog = (builtins + importedWithFingers).distinctBy { it.id }
             _uiState.update { it.copy(songCatalog = catalog, practicePlans = plans) }
             val toSelect = catalog.firstOrNull { it.id == lastId } ?: catalog.firstOrNull()
             if (toSelect != null) {
@@ -524,6 +537,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         analyzeJobs.remove(piece.id)?.cancel()
         viewModelScope.launch {
             songLibrary.delete(piece.id)
+            fingerStore.clear(piece.id)
             practicePlanStore.deleteAllForSong(piece.id)
             val catalog = _uiState.value.songCatalog.filterNot { it.id == piece.id }
                 .ifEmpty { BuiltinSongs.all }
@@ -651,6 +665,65 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleShowFingering() {
         _uiState.update { it.copy(showFingering = !it.showFingering) }
+    }
+
+    /**
+     * 点一下把这颗音的指法加一（5 之后回到 1）。
+     * 写在整曲上，当前若是练习片段会马上重切，其它片段下次进入也对得上。
+     */
+    fun cycleNoteFinger(note: TimedNote) {
+        val state = _uiState.value
+        val ref = state.activeDrillRef ?: return
+        val source = state.songCatalog.firstOrNull { it.id == ref.sourceSongId } ?: return
+        val keyTick = note.pieceStartTick()
+        val current = source.timedNotes.firstOrNull {
+            it.sameFingerSlot(keyTick, note.midi, note.hand, note.track)
+        } ?: return
+        val edit = FingerEdit(
+            startTick = keyTick,
+            midi = note.midi,
+            hand = note.hand,
+            track = note.track,
+            finger = nextFinger(current.finger),
+        )
+        val updated = source.withFingerEdit(edit)
+        publishFingeredSource(updated)
+        viewModelScope.launch {
+            fingerStore.upsert(updated.id, edit)
+            if (updated.id.startsWith("import_")) songLibrary.saveImported(updated)
+        }
+    }
+
+    /** 丢掉这首曲子的手改指法，重新用规则推算。整曲和练习计划一起变。 */
+    fun restoreAutoFingering() {
+        val state = _uiState.value
+        val ref = state.activeDrillRef ?: return
+        val source = state.songCatalog.firstOrNull { it.id == ref.sourceSongId } ?: return
+        val updated = source.withFingerings()
+        publishFingeredSource(updated)
+        viewModelScope.launch {
+            fingerStore.clear(updated.id)
+            if (updated.id.startsWith("import_")) songLibrary.saveImported(updated)
+        }
+    }
+
+    private fun publishFingeredSource(updated: SongPiece) {
+        val ref = _uiState.value.activeDrillRef
+        val plans = _uiState.value.practicePlans
+        _uiState.update { state ->
+            state.copy(songCatalog = state.songCatalog.map { if (it.id == updated.id) updated else it })
+        }
+        if (ref == null || ref.sourceSongId != updated.id) return
+        val shown = if (ref.isFullPiece) {
+            updated
+        } else {
+            val plan = plans[updated.id].orEmpty().firstOrNull { it.id == ref.planId } ?: return
+            val drill = plan.layers.asSequence()
+                .flatMap { it.drills.asSequence() }
+                .firstOrNull { it.id == ref.drillId } ?: return
+            updated.sliceForDrill(drill, plan.id)
+        }
+        songDrillEngine.replaceFingering(shown)
     }
 
     fun importMidi(uri: Uri) {

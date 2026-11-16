@@ -4,6 +4,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -26,12 +32,16 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.pianocoach.drill.PianoHand
 import com.music.pianocoach.drill.SongPiece
+import com.music.pianocoach.drill.TimedNote
 import com.music.pianocoach.drill.midisSoundingAt
 import com.music.pianocoach.drill.primaryTimedNoteAt
 import com.music.pianocoach.midi.midiNoteToLabel
@@ -48,15 +58,6 @@ private val KeyBlack = Color(0xFF111111)
 private val KeyWhiteTargetL = Color(0xFF3D6B58)
 private val KeyWhiteTargetR = Color(0xFF3D5F6B)
 private val KeyPressed = MuseColors.Amber
-
-/** 标准 88 键：A0–C8，一页铺满，避免越界 */
-private const val KEY_LOW = 21
-private const val KEY_HIGH = 108
-
-private fun isBlack(midi: Int): Boolean {
-    val pc = midi % 12
-    return pc in setOf(1, 3, 6, 8, 10)
-}
 
 private fun shortName(midi: Int): String {
     val names = arrayOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -78,12 +79,21 @@ fun PianoRollView(
     modifier: Modifier = Modifier,
     compactHeader: Boolean = false,
     showFingering: Boolean = false,
+    onCycleFinger: ((TimedNote) -> Unit)? = null,
 ) {
-    val whiteKeys = (KEY_LOW..KEY_HIGH).filter { !isBlack(it) }
+    val whiteKeys = rollWhiteKeys()
     val ppq = piece.ticksPerQuarter.coerceAtLeast(1)
     val lookAheadTicks = ppq * 8
     val density = LocalDensity.current
     val keyboardHeightPx = with(density) { 88.dp.toPx() }
+    val pieceRef = rememberUpdatedState(piece)
+    val playheadRef = rememberUpdatedState(playheadTick)
+    val chordRef = rememberUpdatedState(currentChord)
+    val showFingerRef = rememberUpdatedState(showFingering)
+    val keyboardRef = rememberUpdatedState(keyboardHeightPx)
+    val cycleRef = rememberUpdatedState(onCycleFinger)
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val canvasSizeRef = rememberUpdatedState(canvasSize)
 
     Column(modifier = modifier.fillMaxWidth()) {
         if (!compactHeader) {
@@ -111,7 +121,29 @@ fun PianoRollView(
                 .weight(1f, fill = true)
                 .background(WaterfallBg, RoundedCornerShape(8.dp)),
         ) {
-            Canvas(Modifier.fillMaxSize()) {
+            Canvas(
+                Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { canvasSize = it }
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            val cycle = cycleRef.value ?: return@detectTapGestures
+                            if (!showFingerRef.value) return@detectTapGestures
+                            val sz = canvasSizeRef.value
+                            val note = hitFingeringNote(
+                                piece = pieceRef.value,
+                                playheadTick = playheadRef.value,
+                                currentChord = chordRef.value,
+                                tapX = offset.x,
+                                tapY = offset.y,
+                                width = sz.width.toFloat(),
+                                height = sz.height.toFloat(),
+                                keyboardHeightPx = keyboardRef.value,
+                            ) ?: return@detectTapGestures
+                            cycle(note)
+                        }
+                    },
+            ) {
                 val w = size.width
                 val h = size.height
                 val kbH = keyboardHeightPx.coerceAtMost(h * 0.28f)
@@ -121,18 +153,18 @@ fun PianoRollView(
                 val pxPerTick = fallH / lookAheadTicks.toFloat()
 
                 fun xCenter(midi: Int): Float {
-                    val m = midi.coerceIn(KEY_LOW, KEY_HIGH)
-                    if (!isBlack(m)) {
+                    val m = midi.coerceIn(ROLL_KEY_LOW, ROLL_KEY_HIGH)
+                    if (!rollIsBlack(m)) {
                         val wi = whiteKeys.indexOf(m)
                         return wi * whiteW + whiteW / 2f
                     }
-                    val leftW = (m - 1 downTo KEY_LOW).first { !isBlack(it) }
+                    val leftW = (m - 1 downTo ROLL_KEY_LOW).first { !rollIsBlack(it) }
                     val wi = whiteKeys.indexOf(leftW)
                     return (wi + 1) * whiteW
                 }
 
                 fun noteWidth(midi: Int): Float =
-                    if (isBlack(midi)) whiteW * 0.55f else whiteW * 0.9f
+                    if (rollIsBlack(midi)) whiteW * 0.55f else whiteW * 0.9f
 
                 val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     textAlign = Paint.Align.CENTER
@@ -152,7 +184,7 @@ fun PianoRollView(
                 }
 
                 piece.timedNotes.forEach { note ->
-                    if (note.midi !in KEY_LOW..KEY_HIGH) return@forEach
+                    if (note.midi !in ROLL_KEY_LOW..ROLL_KEY_HIGH) return@forEach
                     val endTick = note.startTick + note.durationTicks
                     if (endTick < playheadTick - ppq) return@forEach
                     if (note.startTick > playheadTick + lookAheadTicks) return@forEach
@@ -244,8 +276,8 @@ fun PianoRollView(
                     )
                 }
 
-                (KEY_LOW..KEY_HIGH).filter { isBlack(it) }.forEach { midi ->
-                    val leftW = (midi - 1 downTo KEY_LOW).first { !isBlack(it) }
+                (ROLL_KEY_LOW..ROLL_KEY_HIGH).filter { rollIsBlack(it) }.forEach { midi ->
+                    val leftW = (midi - 1 downTo ROLL_KEY_LOW).first { !rollIsBlack(it) }
                     val wi = whiteKeys.indexOf(leftW)
                     val x = (wi + 1) * whiteW - whiteW * 0.32f
                     val bw = whiteW * 0.58f

@@ -55,18 +55,29 @@ class SongDrillEngine {
     }
 
     fun load(piece: SongPiece) {
-        val prepared = piece.withFingerings()
-        currentPiece = prepared
-        steps = prepared.toChordSteps()
+        currentPiece = piece
+        steps = piece.toChordSteps()
         wrongAccumulator.clear()
         heldNotes.clear()
         sawNoteOnThisStep = false
         clearHoldTimer()
         if (steps.isEmpty()) {
-            _state.value = SongDrillState(piece = prepared, completed = true)
+            _state.value = SongDrillState(piece = piece, completed = true)
             return
         }
         publish(0, correct = 0, playhead = steps[0].startTick)
+    }
+
+    /** 只换指法，保持当前进度。音符时值不变时步进边界不变。 */
+    fun replaceFingering(piece: SongPiece) {
+        currentPiece = piece
+        steps = piece.toChordSteps()
+        val st = _state.value
+        _state.value = st.copy(
+            piece = piece,
+            steps = steps,
+            totalSteps = steps.size,
+        )
     }
 
     fun reset() {

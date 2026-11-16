@@ -82,6 +82,7 @@ fun DrillTab(
     val showLibrary = state.showSongLibrary
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
+    var confirmRestoreFingers by remember { mutableStateOf(false) }
     val pickScore = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -283,6 +284,17 @@ fun DrillTab(
             ) {
                 Text(if (state.showFingering) "指法开" else "指法关", fontSize = 12.sp)
             }
+            if (state.showFingering) {
+                Text(
+                    "点音符改指法",
+                    color = onBg.copy(alpha = 0.65f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+                TextButton(onClick = { confirmRestoreFingers = true }) {
+                    Text("恢复", fontSize = 12.sp, color = onBg)
+                }
+            }
         }
 
         PianoRollView(
@@ -296,7 +308,24 @@ fun DrillTab(
                 .weight(1f),
             compactHeader = true,
             showFingering = state.showFingering,
+            onCycleFinger = viewModel::cycleNoteFinger,
         )
+        if (confirmRestoreFingers) {
+            AlertDialog(
+                onDismissRequest = { confirmRestoreFingers = false },
+                title = { Text("恢复自动指法") },
+                text = { Text("这首曲子上手改过的指法会清掉，改回自动推算。整曲和练习计划用的是同一份指法。") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.restoreAutoFingering()
+                        confirmRestoreFingers = false
+                    }) { Text("恢复") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmRestoreFingers = false }) { Text("取消") }
+                },
+            )
+        }
     }
 }
 
