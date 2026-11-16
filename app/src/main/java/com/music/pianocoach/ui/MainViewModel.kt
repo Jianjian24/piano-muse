@@ -334,6 +334,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(showSettings = show) }
     }
 
+    /** 曲库列表滚动位置；不放进 UiState，避免滑动时整页重组。 */
+    private var songLibraryScrollPx: Int = 0
+
+    fun songLibraryScrollPx(): Int = songLibraryScrollPx
+
+    fun rememberSongLibraryScroll(px: Int) {
+        songLibraryScrollPx = px.coerceAtLeast(0)
+    }
+
     fun setShowSongLibrary(show: Boolean) {
         _uiState.update { it.copy(showSongLibrary = show) }
     }

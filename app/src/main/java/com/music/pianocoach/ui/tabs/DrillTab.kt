@@ -23,12 +23,15 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +65,7 @@ import com.music.pianocoach.ui.MainViewModel
 import com.music.pianocoach.ui.PianoRollView
 import com.music.pianocoach.ui.PianoUiState
 import com.music.pianocoach.ui.theme.MuseColors
+import kotlinx.coroutines.flow.first
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -309,10 +313,20 @@ private fun SongLibraryPanel(
     val expandedSongId = state.libraryExpandedSongId
     val aiExpandedSongId = state.libraryAiExpandedSongId
     val expandedPlanId = state.libraryExpandedPlanId
+    val scroll = rememberScrollState()
+    var pendingDelete by remember { mutableStateOf<SongPiece?>(null) }
+    LaunchedEffect(scroll) {
+        val saved = viewModel.songLibraryScrollPx()
+        if (saved > 0) {
+            snapshotFlow { scroll.maxValue }.first { it > 0 }
+            scroll.scrollTo(saved.coerceAtMost(scroll.maxValue))
+        }
+        snapshotFlow { scroll.value }.collect { viewModel.rememberSongLibraryScroll(it) }
+    }
 
     Column(
         modifier
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(scroll),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedButton(onClick = onPickMidi, modifier = Modifier.fillMaxWidth()) {
@@ -322,7 +336,7 @@ private fun SongLibraryPanel(
             Text(it, color = onBg, style = MaterialTheme.typography.bodySmall)
         }
         Text(
-            "点曲名展开；默认只露整曲。导入会自动分析一次；长按导入曲可删。",
+            "点曲名展开；默认只露整曲。导入会自动分析一次；长按导入曲可删除，删除前会确认。",
             color = onBg.copy(alpha = 0.7f),
             style = MaterialTheme.typography.bodySmall,
         )
@@ -351,7 +365,7 @@ private fun SongLibraryPanel(
                             .combinedClickable(
                                 onClick = { viewModel.toggleLibrarySongExpanded(piece.id) },
                                 onLongClick = {
-                                    if (imported) viewModel.removeImportedSong(piece)
+                                    if (imported) pendingDelete = piece
                                 },
                             ),
                         verticalAlignment = Alignment.CenterVertically,
@@ -403,6 +417,25 @@ private fun SongLibraryPanel(
                     }
             }
         }
+    }
+
+    pendingDelete?.let { piece ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除曲目") },
+            text = { Text("确定删除「${piece.title}」？这首导入曲和对应练习计划会一起去掉。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.removeImportedSong(piece)
+                    pendingDelete = null
+                }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+            },
+        )
     }
 }
 
